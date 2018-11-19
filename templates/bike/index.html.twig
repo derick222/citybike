@@ -1,0 +1,220 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}City Bike - Rick Espina{% endblock %}
+
+{% block body %}
+
+
+<input id="origin-input" class="controls" type="text"
+        placeholder="Enter an origin location">
+
+    <input id="destination-input" class="controls" type="text"
+        placeholder="Enter a destination location">
+        <div id="right-panel" class="controls" style="background-color: aliceblue; width: 435px; float: right; position: relative;"></div>
+
+    <div id="mode-selector" class="controls">
+    
+      <input type="radio" name="type" id="changemode-bicycling" checked="checked">
+      <label for="changemode-bicycling">Bicycling</label>
+
+      <input type="radio" name="type" id="changemode-walking">
+      <label for="changemode-walking">Walking</label>
+
+      <input type="radio" name="type" id="changemode-transit">
+      <label for="changemode-transit">Transit</label>
+
+      <input type="radio" name="type" id="changemode-driving">
+      <label for="changemode-driving">Driving</label>
+      
+    </div>
+
+    <div class="js-content" data-is-content="{{ aBikeCity }}"></div>
+    <div id="map"></div>
+    
+    <script>
+
+      function initMap() {
+        var map = new google.maps.Map(document.getElementById('map'), {
+          mapTypeControl: false,
+          center: {lat: 53.349013, lng: -6.260311},
+          zoom: 14
+        });
+    
+       
+        // getting all the stations
+        document.addEventListener('DOMContentLoaded', function() {
+            var content = document.querySelector('.js-content');
+            var isContent = content.dataset.isContent;
+            var obj = JSON.parse(isContent);
+
+            for(i=0; i < obj.length; i++){
+                var contentString = '<div id="content">'+
+                    '<section id="stationDetails">'+
+                        '<h3>'+ obj[i].name + '</h3>'+
+                        '<address> Address: '+ obj[i].address + '</address>'+
+                        '<ul style="list-style: none; padding:1px">'+
+                            '<li><data> Total Bike Stand: <span style="float:right;font-weight:bold; width:175px">'+ obj[i].bike_stands + '</span></data></li>'+
+                            '<li><data> Available Bike Stand: <span style="float:right;font-weight:bold; width:175px">'+ obj[i].available_bike_stands + '</span></data></li>'+
+                            '<li><data> Available Bikes: <span style="float:right;font-weight:bold; width:175px">'+ obj[i].available_bikes + '</span></data></li>'+
+                            '<li><data> Status: <span style="float:right;font-weight:bold; width:175px">'+ obj[i].status + '</span></data></li>'+
+                        '</ul>'+
+                    '</section>'+
+                    '<section>'+
+                        '<h3>Weather updates</h3>'+
+                        '<ul id="weatherDetails" style="list-style: none; padding:1px"></ul>'+
+                    '</section>'+
+                    '</div>';
+
+                var marker = new google.maps.Marker({
+                    position: {lat: obj[i].position.lat, lng: obj[i].position.lng},
+                    map: map,
+                    title: obj[i].name
+                });
+                addInfoWindow(marker, contentString, obj[i].position.lat, obj[i].position.lng, obj[i]);
+            }
+        });
+
+
+        new AutocompleteDirectionsHandler(map);
+
+      }
+
+    
+    // Removes the markers from the map, but keeps them in the array.
+      function clearMarkers() {
+        setMapOnAll(null);
+      }
+
+
+    // Setup our listener to process completed requests
+        function ajaxWeatherRequest(lat, lng){
+        // Set up our HTTP request
+            const Http = new XMLHttpRequest();
+            const url = 'http://localhost:8000/details/'+lat+'/'+lng;
+            Http.open("GET", url);
+            Http.send();
+            Http.onreadystatechange=(e)=>{
+                onLoad(Http.responseText);
+            }
+        }
+       
+        // load ajax result
+       function onLoad(weathers) {
+            var holder = document.getElementById('weatherDetails');
+            var data = JSON.parse(weathers);
+
+            //simulate ajax call
+            setTimeout(function() {
+            // this code will be in the success handler
+                var responseData = '<li><data> Forcast: <span style="float:right;font-weight:bold; width:175px">'+ data.todaysWeather + '</span></data></li>'+
+                                    '<li><data> Temp: <span style="float:right;font-weight:bold; width:175px">'+ data.temp + ' Celsius</span></data></li>'+
+                                    '<li><data> Pressure: <span style="float:right;font-weight:bold; width:175px">'+ data.pressure + ' hpa</span></data></li>'+
+                                    '<li><data> Humidity: <span style="float:right;font-weight:bold; width:175px">'+ data.humidity + '%</span></data></li>'+
+                                    '<li><data> Wind speed: <span style="float:right;font-weight:bold; width:175px">'+ data.wind+ ' mph</span></data></li>';
+                holder.innerHTML = responseData;
+            }, 1000);
+        }
+     
+
+        // popup details
+      function addInfoWindow(marker, message, lat, lng, details) {
+            var infoWindow = new google.maps.InfoWindow({
+                content: message,
+                maxWidth: 500
+            });
+
+            google.maps.event.addListener(marker, 'click', function () {
+                infoWindow.open(map, marker);
+                ajaxWeatherRequest(lat, lng);
+            });
+
+        }
+
+
+       /**
+        * @constructor
+       */
+      function AutocompleteDirectionsHandler(map) {
+        this.map = map;
+        this.originPlaceId = null;
+        this.destinationPlaceId = null;
+        this.travelMode = 'BICYCLING';
+        var originInput = document.getElementById('origin-input');
+        var destinationInput = document.getElementById('destination-input');
+        var modeSelector = document.getElementById('mode-selector');
+        this.directionsService = new google.maps.DirectionsService;
+        this.directionsDisplay = new google.maps.DirectionsRenderer;
+        this.directionsDisplay.setMap(map);
+        this.directionsDisplay.setPanel(document.getElementById('right-panel'));
+
+        var originAutocomplete = new google.maps.places.Autocomplete(
+            originInput, {placeIdOnly: true});
+        var destinationAutocomplete = new google.maps.places.Autocomplete(
+            destinationInput, {placeIdOnly: true});
+
+        this.setupClickListener('changemode-walking', 'WALKING');
+        this.setupClickListener('changemode-transit', 'TRANSIT');
+        this.setupClickListener('changemode-driving', 'DRIVING');
+        this.setupClickListener('changemode-bicycling', 'BICYCLING');
+
+        this.setupPlaceChangedListener(originAutocomplete, 'ORIG');
+        this.setupPlaceChangedListener(destinationAutocomplete, 'DEST');
+
+        this.map.controls[google.maps.ControlPosition.TOP_LEFT].push(originInput);
+        this.map.controls[google.maps.ControlPosition.TOP_LEFT].push(destinationInput);
+        this.map.controls[google.maps.ControlPosition.TOP_LEFT].push(modeSelector);
+      }
+
+      // Sets a listener on a radio button to change the filter type on Places
+      // Autocomplete.
+      AutocompleteDirectionsHandler.prototype.setupClickListener = function(id, mode) {
+        var radioButton = document.getElementById(id);
+        var me = this;
+        radioButton.addEventListener('click', function() {
+          me.travelMode = mode;
+          me.route();
+        });
+      };
+
+      AutocompleteDirectionsHandler.prototype.setupPlaceChangedListener = function(autocomplete, mode) {
+        var me = this;
+        autocomplete.bindTo('bounds', this.map);
+        autocomplete.addListener('place_changed', function() {
+          var place = autocomplete.getPlace();
+          if (!place.place_id) {
+            window.alert("Please select an option from the dropdown list.");
+            return;
+          }
+          if (mode === 'ORIG') {
+            me.originPlaceId = place.place_id;
+          } else {
+            me.destinationPlaceId = place.place_id;
+          }
+          me.route();
+        });
+
+      };
+
+      AutocompleteDirectionsHandler.prototype.route = function() {
+        if (!this.originPlaceId || !this.destinationPlaceId) {
+          return;
+        }
+        var me = this;
+        
+        this.directionsService.route({
+          origin: {'placeId': this.originPlaceId},
+          destination: {'placeId': this.destinationPlaceId},
+          travelMode: this.travelMode
+        }, function(response, status) {
+          if (status === 'OK') {
+            me.directionsDisplay.setDirections(response);
+          } else {
+            window.alert('Directions request failed due to ' + status);
+          }
+        });
+      };
+
+    </script>
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDNU2f0hcVf6A9oXriEKA1PL7FJMHs9VXk&libraries=places,geometry&region=IE&callback=initMap"
+        async defer></script>
+{% endblock %}
